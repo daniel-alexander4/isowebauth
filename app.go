@@ -145,6 +145,10 @@ func (a *App) GetServerStatus() map[string]interface{} {
 	}
 }
 
+func (a *App) GetVersion() string {
+	return server.Version
+}
+
 func (a *App) RespondToSignRequest(id string, allowed bool) {
 	if a.server != nil {
 		a.server.RespondToConsent(id, allowed)

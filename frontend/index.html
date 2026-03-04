@@ -10,7 +10,12 @@
     <!-- Settings View -->
     <div class="view active" id="view-settings">
       <div class="wrap">
-        <h1>SSHKey Web Auth</h1>
+        <div class="header-row">
+          <h1>SSHKey Web Auth</h1>
+          <button id="hamburger-btn" class="hamburger-btn" type="button" aria-label="Menu">
+            <span></span><span></span><span></span>
+          </button>
+        </div>
 
         <div id="setup-checklist" class="checklist" hidden>
           <div class="checklist-item" id="check-key">
@@ -147,6 +152,22 @@
         <div class="consent-actions">
           <button id="consent-allow">Allow</button>
           <button id="consent-deny" class="secondary">Deny</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- About Overlay -->
+    <div class="consent-overlay" id="about-overlay" hidden>
+      <div class="consent-dialog about-dialog">
+        <h2>About</h2>
+        <div class="about-content">
+          <p><strong>isowebauth</strong> <span id="about-version"></span></p>
+          <p>A desktop app that signs web authentication challenges using your local SSH key — no passwords, no browser extensions.</p>
+          <p><strong>isopass</strong> is a web-based credential manager that delegates authentication to isowebauth, keeping your private key safely offline.</p>
+          <p class="about-link"><a href="https://github.com/daniel-alexander4/isowebauth" target="_blank">github.com/daniel-alexander4/isowebauth</a></p>
+        </div>
+        <div class="consent-actions">
+          <button id="about-close">Close</button>
         </div>
       </div>
     </div>

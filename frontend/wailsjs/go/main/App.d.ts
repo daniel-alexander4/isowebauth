@@ -6,6 +6,8 @@ export function GetConfig():Promise<config.Config>;
 
 export function GetServerStatus():Promise<Record<string, any>>;
 
+export function GetVersion():Promise<string>;
+
 export function RespondToSignRequest(arg1:string,arg2:boolean):Promise<void>;
 
 export function SetConfig(arg1:config.Config):Promise<void>;

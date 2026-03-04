@@ -31,4 +31,34 @@ if (window.runtime) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
+// About overlay
+(function() {
+  var overlay = document.getElementById('about-overlay');
+  var hamburger = document.getElementById('hamburger-btn');
+  var closeBtn = document.getElementById('about-close');
+
+  hamburger.addEventListener('click', function() {
+    overlay.hidden = false;
+  });
+  closeBtn.addEventListener('click', function() {
+    overlay.hidden = true;
+  });
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay) overlay.hidden = true;
+  });
+})();
+
+// Fetch version on init
+async function fetchVersion() {
+  try {
+    var ver = await window.go.main.App.GetVersion();
+    document.getElementById('about-version').textContent = 'v' + ver;
+  } catch (e) {
+    console.error('Failed to fetch version:', e);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initApp();
+  fetchVersion();
+});

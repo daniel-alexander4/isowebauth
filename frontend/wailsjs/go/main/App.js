@@ -10,6 +10,10 @@ export function GetServerStatus() {
   return window['go']['main']['App']['GetServerStatus']();
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function RespondToSignRequest(arg1, arg2) {
   return window['go']['main']['App']['RespondToSignRequest'](arg1, arg2);
 }

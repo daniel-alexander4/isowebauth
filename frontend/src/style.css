@@ -20,6 +20,31 @@ body {
 }
 
 h1 { margin: 0 0 10px; font-size: 16px; }
+
+/* Header row with hamburger */
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.header-row h1 { margin-bottom: 0; }
+.hamburger-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hamburger-btn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: #9db0c9;
+  border-radius: 1px;
+}
+.hamburger-btn:hover span { background: #e5edf7; }
 .onboarding-wrap h1 { font-size: 22px; margin-bottom: 4px; }
 .subtitle { color: #9db0c9; margin: 0 0 20px; font-size: 14px; }
 
@@ -358,3 +383,17 @@ button[aria-pressed="false"] {
   padding: 8px 20px;
   font-size: 14px;
 }
+
+/* About dialog */
+.about-content p {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #c0cfe0;
+  line-height: 1.5;
+}
+.about-content p strong { color: #e5edf7; }
+.about-link a {
+  color: #6ee7a0;
+  text-decoration: none;
+}
+.about-link a:hover { text-decoration: underline; }
