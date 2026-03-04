@@ -94,9 +94,25 @@ button {
   cursor: pointer;
   font-size: 13px;
 }
+button:hover {
+  background: #23996a;
+  border-color: #2db87a;
+}
+button:active {
+  background: #166644;
+  border-color: #1d7f55;
+}
 button.secondary {
   background: #2c3a52;
   border-color: #42577a;
+}
+button.secondary:hover {
+  background: #3a4d6a;
+  border-color: #5577a0;
+}
+button.secondary:active {
+  background: #232f42;
+  border-color: #3c506f;
 }
 button[aria-pressed="false"] {
   background: #3b1c1c;

@@ -97,6 +97,13 @@ func (s *Server) RespondToConsent(id string, allowed bool) {
 	}
 }
 
+func (s *Server) newConsentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextID++
+	return fmt.Sprintf("consent-%d", s.nextID)
+}
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -187,7 +194,46 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Origin is allowlisted and policy passed — sign automatically.
+	// Request user consent if callback is configured
+	if s.consentCallback != nil {
+		consentID := s.newConsentID()
+		ch := make(chan bool, 1)
+		s.mu.Lock()
+		s.pendingConsent[consentID] = ch
+		s.mu.Unlock()
+
+		s.consentCallback(ConsentRequest{
+			ID:        consentID,
+			Origin:    origin,
+			Namespace: req.Namespace,
+			Company:   req.Company,
+			Challenge: req.Challenge,
+		})
+
+		select {
+		case allowed := <-ch:
+			if !allowed {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"ok":    false,
+					"error": "User denied consent",
+				})
+				return
+			}
+		case <-time.After(ConsentTimeout):
+			s.mu.Lock()
+			delete(s.pendingConsent, consentID)
+			s.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusGatewayTimeout)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "Consent timeout",
+			})
+			return
+		}
+	}
 
 	// Validate key
 	if err := keyutil.ValidateKeyFile(cfg.KeyPath); err != nil {

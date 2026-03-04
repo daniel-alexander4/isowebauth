@@ -222,9 +222,10 @@ async function verifySetup() {
   setCheckItem('check-server', 'pending', 'Checking HTTP server...');
 
   // Check SSH key
+  var keyOk = false;
   try {
     var keyResult = await window.go.main.App.ValidateKey();
-    var keyOk = keyResult.valid === true;
+    keyOk = keyResult.valid === true;
     setCheckItem('check-key', keyOk ? 'pass' : 'fail',
       keyOk ? 'SSH key valid' : 'SSH key: ' + (keyResult.error || 'validation failed'));
   } catch (err) {
@@ -238,14 +239,18 @@ async function verifySetup() {
     hasOrigins ? Object.keys(collected.values).length + ' target system(s) configured' : 'No target systems configured');
 
   // Check HTTP server
+  var serverOk = false;
   try {
     var serverStatus = await window.go.main.App.GetServerStatus();
-    var serverOk = serverStatus.running === true;
+    serverOk = serverStatus.running === true;
     setCheckItem('check-server', serverOk ? 'pass' : 'fail',
       serverOk ? 'HTTP server running on ' + serverStatus.address : 'HTTP server not running');
   } catch (err) {
     setCheckItem('check-server', 'fail', 'HTTP server: ' + err);
   }
+
+  var allOk = keyOk && hasOrigins && serverOk;
+  setStatus(allOk ? 'All checks passed.' : 'Some checks failed.', allOk ? 'success' : 'error');
 
   setTimeout(function() {
     if (checklistEl) checklistEl.hidden = true;
