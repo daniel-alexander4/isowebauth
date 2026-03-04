@@ -2,15 +2,12 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"mime"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"isowebauth/internal/config"
@@ -20,10 +17,7 @@ import (
 
 const maxRequestBody = 4096
 
-const (
-	Version        = "1.0.0"
-	ConsentTimeout = 30 * time.Second
-)
+const Version = "1.0.0"
 
 type SignRequest struct {
 	Challenge string `json:"challenge"`
@@ -31,34 +25,18 @@ type SignRequest struct {
 	Company   string `json:"company,omitempty"`
 }
 
-type ConsentRequest struct {
-	ID        string `json:"id"`
-	Origin    string `json:"origin"`
-	Namespace string `json:"namespace"`
-	Company   string `json:"company,omitempty"`
-	Challenge string `json:"challenge"`
-}
-
-type ConsentCallback func(req ConsentRequest)
-
 type Server struct {
-	configMgr       *config.Manager
-	httpServer      *http.Server
-	listener        net.Listener
-	consentCallback ConsentCallback
-	boundPort       int
-
-	mu             sync.Mutex
-	pendingConsent map[string]chan bool
+	configMgr  *config.Manager
+	httpServer *http.Server
+	listener   net.Listener
+	boundPort  int
 }
 
-func New(configMgr *config.Manager, onConsent ConsentCallback) *Server {
+func New(configMgr *config.Manager, onConsent interface{}) *Server {
 	cfg := configMgr.Get()
 	s := &Server{
-		configMgr:       configMgr,
-		consentCallback: onConsent,
-		pendingConsent:  make(map[string]chan bool),
-		boundPort:       cfg.ServerPort,
+		configMgr: configMgr,
+		boundPort: cfg.ServerPort,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", s.handleStatus)
@@ -96,14 +74,6 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) Stop() error {
-	// Deny all pending consent requests so blocked goroutines can exit
-	s.mu.Lock()
-	for id, ch := range s.pendingConsent {
-		ch <- false
-		delete(s.pendingConsent, id)
-	}
-	s.mu.Unlock()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.httpServer.Shutdown(ctx)
@@ -116,23 +86,6 @@ func (s *Server) Addr() string {
 	return ""
 }
 
-func (s *Server) RespondToConsent(id string, allowed bool) {
-	s.mu.Lock()
-	ch, ok := s.pendingConsent[id]
-	if ok {
-		delete(s.pendingConsent, id)
-	}
-	s.mu.Unlock()
-	if ok {
-		ch <- allowed
-	}
-}
-
-func (s *Server) newConsentID() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return "consent-" + hex.EncodeToString(b)
-}
 
 func isOriginAllowed(origin string, allowedOrigins []string) bool {
 	normalized := policy.NormalizeOrigin(origin)
@@ -246,65 +199,6 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
 			"error": "Request denied by policy",
-		})
-		return
-	}
-
-	// Require user consent
-	if s.consentCallback == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":    false,
-			"error": "Consent handler not configured",
-		})
-		return
-	}
-
-	consentID := s.newConsentID()
-	ch := make(chan bool, 1)
-	s.mu.Lock()
-	if len(s.pendingConsent) > 0 {
-		s.mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":    false,
-			"error": "Another sign request is pending",
-		})
-		return
-	}
-	s.pendingConsent[consentID] = ch
-	s.mu.Unlock()
-
-	s.consentCallback(ConsentRequest{
-		ID:        consentID,
-		Origin:    origin,
-		Namespace: req.Namespace,
-		Company:   req.Company,
-		Challenge: req.Challenge,
-	})
-
-	select {
-	case allowed := <-ch:
-		if !allowed {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"ok":    false,
-				"error": "User denied consent",
-			})
-			return
-		}
-	case <-time.After(ConsentTimeout):
-		s.mu.Lock()
-		delete(s.pendingConsent, consentID)
-		s.mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusGatewayTimeout)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"ok":    false,
-			"error": "Consent timeout",
 		})
 		return
 	}

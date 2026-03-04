@@ -32,16 +32,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.configMgr = mgr
 
-	a.server = server.New(mgr, func(req server.ConsentRequest) {
-		runtime.EventsEmit(ctx, "sign-request", map[string]interface{}{
-			"id":        req.ID,
-			"origin":    req.Origin,
-			"namespace": req.Namespace,
-			"company":   req.Company,
-			"challenge": req.Challenge,
-		})
-		runtime.WindowShow(ctx)
-	})
+	a.server = server.New(mgr, nil)
 
 	if err := a.server.Start(); err != nil {
 		runtime.LogErrorf(ctx, "Failed to start HTTP server: %s", err)
@@ -147,10 +138,4 @@ func (a *App) GetServerStatus() map[string]interface{} {
 
 func (a *App) GetVersion() string {
 	return server.Version
-}
-
-func (a *App) RespondToSignRequest(id string, allowed bool) {
-	if a.server != nil {
-		a.server.RespondToConsent(id, allowed)
-	}
 }

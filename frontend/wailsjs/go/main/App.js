@@ -14,10 +14,6 @@ export function GetVersion() {
   return window['go']['main']['App']['GetVersion']();
 }
 
-export function RespondToSignRequest(arg1, arg2) {
-  return window['go']['main']['App']['RespondToSignRequest'](arg1, arg2);
-}
-
 export function SetConfig(arg1) {
   return window['go']['main']['App']['SetConfig'](arg1);
 }

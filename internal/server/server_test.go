@@ -136,15 +136,9 @@ func TestOriginRejection(t *testing.T) {
 	}
 }
 
-func TestSignWithConsentAllowed(t *testing.T) {
+func TestSignAllowedOriginSkipsConsent(t *testing.T) {
 	m := testConfigManager(t)
-	var gotConsent ConsentRequest
-	var s *Server
-	s = New(m, func(req ConsentRequest) {
-		gotConsent = req
-		// Auto-allow consent
-		go s.RespondToConsent(req.ID, true)
-	})
+	s := New(m, nil)
 
 	body := `{"challenge":"AbCdEfGhIjKlMnOp_1234","namespace":"dev"}`
 	req := httptest.NewRequest(http.MethodPost, "/sign", strings.NewReader(body))
@@ -153,38 +147,16 @@ func TestSignWithConsentAllowed(t *testing.T) {
 	w := httptest.NewRecorder()
 	s.handleSign(w, req)
 
-	// The sign itself will likely fail (no real ssh-keygen setup) but
-	// we verify the consent flow worked correctly
-	if gotConsent.Origin != "http://localhost:3000" {
-		t.Errorf("expected consent origin http://localhost:3000, got %q", gotConsent.Origin)
+	// Signing will fail (no real SSH key in test) but the request should
+	// reach the signer without any consent prompt — status 500 means it
+	// passed policy and went straight to signing.
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 (signing fails in test), got %d", w.Code)
 	}
-	if gotConsent.Namespace != "dev" {
-		t.Errorf("expected consent namespace dev, got %q", gotConsent.Namespace)
-	}
-}
-
-func TestSignWithConsentDenied(t *testing.T) {
-	m := testConfigManager(t)
-	var s *Server
-	s = New(m, func(req ConsentRequest) {
-		go s.RespondToConsent(req.ID, false)
-	})
-
-	body := `{"challenge":"AbCdEfGhIjKlMnOp_1234","namespace":"dev"}`
-	req := httptest.NewRequest(http.MethodPost, "/sign", strings.NewReader(body))
-	req.Header.Set("Origin", "http://localhost:3000")
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	s.handleSign(w, req)
-
-	if w.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", w.Code)
-	}
-
 	var resp map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	errMsg, _ := resp["error"].(string)
-	if !strings.Contains(errMsg, "denied") {
-		t.Errorf("expected denial message, got: %s", errMsg)
+	if !strings.Contains(errMsg, "Signing failed") {
+		t.Errorf("expected signing error, got: %s", errMsg)
 	}
 }

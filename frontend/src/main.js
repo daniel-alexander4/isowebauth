@@ -24,12 +24,7 @@ async function initApp() {
   }
 }
 
-// Listen for Wails events
-if (window.runtime) {
-  window.runtime.EventsOn('sign-request', function(data) {
-    showConsentDialog(data);
-  });
-}
+
 
 // About overlay
 (function() {

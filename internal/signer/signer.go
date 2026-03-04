@@ -84,9 +84,7 @@ func Sign(challenge, namespace, origin, keyPath string, timeout time.Duration) (
 	challengeFile := filepath.Join(tmpDir, "challenge")
 	sigFile := filepath.Join(tmpDir, "challenge.sig")
 
-	// Bind origin into signed payload to prevent cross-origin signature replay
-	signedPayload := challenge + "|" + origin
-	if err := os.WriteFile(challengeFile, []byte(signedPayload), 0600); err != nil {
+	if err := os.WriteFile(challengeFile, []byte(challenge), 0600); err != nil {
 		return "", fmt.Errorf("failed to write challenge file: %w", err)
 	}
 
