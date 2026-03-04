@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+func skipKeyPathValidation(t *testing.T) {
+	t.Helper()
+	old := validateKeyPathFunc
+	validateKeyPathFunc = func(string) error { return nil }
+	t.Cleanup(func() { validateKeyPathFunc = old })
+}
+
 func createKeyFile(t *testing.T, dir string) string {
 	t.Helper()
 	keyFile := filepath.Join(dir, "id_test")
@@ -34,7 +41,7 @@ func TestSignRejectsInvalidChallengeFormat(t *testing.T) {
 	dir := t.TempDir()
 	keyFile := createKeyFile(t, dir)
 
-	_, err := Sign("bad!!", "myapp", keyFile, DefaultTimeout)
+	_, err := Sign("bad!!", "myapp", "http://localhost:3000", keyFile, DefaultTimeout)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -50,7 +57,7 @@ func TestSignRejectsInvalidNamespaceFormat(t *testing.T) {
 	dir := t.TempDir()
 	keyFile := createKeyFile(t, dir)
 
-	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "bad namespace", keyFile, DefaultTimeout)
+	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "bad namespace", "http://localhost:3000", keyFile, DefaultTimeout)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -63,16 +70,18 @@ func TestSignReturnsErrorWhenKeygenFails(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipped on Windows")
 	}
+	skipKeyPathValidation(t)
 	dir := t.TempDir()
 	keyFile := createKeyFile(t, dir)
 	fakeKeygen := createFakeKeygen(t, dir,
 		"#!/usr/bin/env bash\necho 'simulated sign failure' >&2\nexit 17\n",
 	)
 
-	os.Setenv("SSH_KEYGEN_PATH", fakeKeygen)
-	defer os.Unsetenv("SSH_KEYGEN_PATH")
+	old := sshKeygenPath
+	sshKeygenPath = fakeKeygen
+	defer func() { sshKeygenPath = old }()
 
-	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", keyFile, DefaultTimeout)
+	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", "http://localhost:3000", keyFile, DefaultTimeout)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -88,16 +97,18 @@ func TestSignReturnsErrorWhenKeygenTimesOut(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipped on Windows")
 	}
+	skipKeyPathValidation(t)
 	dir := t.TempDir()
 	keyFile := createKeyFile(t, dir)
 	fakeKeygen := createFakeKeygen(t, dir,
 		"#!/usr/bin/env bash\nsleep 2\nexit 0\n",
 	)
 
-	os.Setenv("SSH_KEYGEN_PATH", fakeKeygen)
-	defer os.Unsetenv("SSH_KEYGEN_PATH")
+	old := sshKeygenPath
+	sshKeygenPath = fakeKeygen
+	defer func() { sshKeygenPath = old }()
 
-	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", keyFile, 100*time.Millisecond)
+	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", "http://localhost:3000", keyFile, 100*time.Millisecond)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -107,7 +118,8 @@ func TestSignReturnsErrorWhenKeygenTimesOut(t *testing.T) {
 }
 
 func TestSignReturnsErrorForMissingKeyFile(t *testing.T) {
-	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", "/nonexistent/key", DefaultTimeout)
+	skipKeyPathValidation(t)
+	_, err := Sign("AbCdEfGhIjKlMnOp_1234", "myapp", "http://localhost:3000", "/nonexistent/key", DefaultTimeout)
 	if err == nil {
 		t.Fatal("expected error")
 	}

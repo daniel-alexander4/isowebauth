@@ -2,8 +2,10 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 )
 
@@ -77,6 +79,17 @@ func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Verify config file permissions on Unix
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(m.path)
+		if err == nil {
+			mode := info.Mode().Perm()
+			if mode&0o077 != 0 {
+				return fmt.Errorf("config file permissions are too open (%#o), expected 0600 or stricter: %s", mode, m.path)
+			}
+		}
+	}
+
 	data, err := os.ReadFile(m.path)
 	if err != nil {
 		return err
@@ -102,11 +115,14 @@ func (m *Manager) Load() error {
 }
 
 func (m *Manager) Save() error {
-	m.mu.RLock()
-	cfg := m.config
-	m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.saveLocked()
+}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
+// saveLocked writes the current config to disk. Caller must hold mu.
+func (m *Manager) saveLocked() error {
+	data, err := json.MarshalIndent(m.config, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -117,6 +133,12 @@ func (m *Manager) Save() error {
 		return err
 	}
 	tmpName := tmp.Name()
+
+	if err := os.Chmod(tmpName, 0600); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
 
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
@@ -149,7 +171,7 @@ func (m *Manager) Get() Config {
 
 func (m *Manager) Update(fn func(*Config)) error {
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	fn(&m.config)
-	m.mu.Unlock()
-	return m.Save()
+	return m.saveLocked()
 }

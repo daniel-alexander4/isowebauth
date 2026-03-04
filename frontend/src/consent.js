@@ -3,6 +3,10 @@
 var currentConsentId = null;
 
 function showConsentDialog(data) {
+  // Deny any pending request before showing the new one
+  if (currentConsentId) {
+    window.go.main.App.RespondToSignRequest(currentConsentId, false);
+  }
   currentConsentId = data.id;
 
   var overlay = document.getElementById('consent-overlay');

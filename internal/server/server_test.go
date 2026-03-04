@@ -28,6 +28,34 @@ func testConfigManager(t *testing.T) *config.Manager {
 	return m
 }
 
+func TestHostValidationRejectsBadHost(t *testing.T) {
+	m := testConfigManager(t)
+	s := New(m, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	req.Host = "evil.attacker.com:7890"
+	w := httptest.NewRecorder()
+	s.httpServer.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 for bad Host, got %d", w.Code)
+	}
+}
+
+func TestHostValidationAllowsLocalhost(t *testing.T) {
+	m := testConfigManager(t)
+	s := New(m, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/status", nil)
+	req.Host = "127.0.0.1:7890"
+	w := httptest.NewRecorder()
+	s.httpServer.Handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200 for localhost Host, got %d", w.Code)
+	}
+}
+
 func TestStatusEndpoint(t *testing.T) {
 	m := testConfigManager(t)
 	s := New(m, nil)

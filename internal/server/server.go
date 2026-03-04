@@ -2,18 +2,23 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
+	"mime"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"isowebauth/internal/config"
-	"isowebauth/internal/keyutil"
 	"isowebauth/internal/policy"
 	"isowebauth/internal/signer"
 )
+
+const maxRequestBody = 4096
 
 const (
 	Version        = "1.0.0"
@@ -41,23 +46,40 @@ type Server struct {
 	httpServer      *http.Server
 	listener        net.Listener
 	consentCallback ConsentCallback
+	boundPort       int
 
 	mu             sync.Mutex
 	pendingConsent map[string]chan bool
-	nextID         int
 }
 
 func New(configMgr *config.Manager, onConsent ConsentCallback) *Server {
+	cfg := configMgr.Get()
 	s := &Server{
 		configMgr:       configMgr,
 		consentCallback: onConsent,
 		pendingConsent:  make(map[string]chan bool),
+		boundPort:       cfg.ServerPort,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/sign", s.handleSign)
-	s.httpServer = &http.Server{Handler: mux}
+	s.httpServer = &http.Server{Handler: s.validateHost(mux)}
 	return s
+}
+
+// validateHost rejects requests whose Host header is not 127.0.0.1 or localhost
+// on the bound port. This prevents DNS rebinding attacks.
+func (s *Server) validateHost(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		allowed := fmt.Sprintf("127.0.0.1:%d", s.boundPort)
+		allowedLocal := fmt.Sprintf("localhost:%d", s.boundPort)
+		if host != allowed && host != allowedLocal {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) Start() error {
@@ -68,11 +90,20 @@ func (s *Server) Start() error {
 		return fmt.Errorf("failed to listen on %s: %w", addr, err)
 	}
 	s.listener = ln
+	s.boundPort = cfg.ServerPort
 	go s.httpServer.Serve(ln)
 	return nil
 }
 
 func (s *Server) Stop() error {
+	// Deny all pending consent requests so blocked goroutines can exit
+	s.mu.Lock()
+	for id, ch := range s.pendingConsent {
+		ch <- false
+		delete(s.pendingConsent, id)
+	}
+	s.mu.Unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	return s.httpServer.Shutdown(ctx)
@@ -98,13 +129,38 @@ func (s *Server) RespondToConsent(id string, allowed bool) {
 }
 
 func (s *Server) newConsentID() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.nextID++
-	return fmt.Sprintf("consent-%d", s.nextID)
+	b := make([]byte, 16)
+	rand.Read(b)
+	return "consent-" + hex.EncodeToString(b)
+}
+
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	normalized := policy.NormalizeOrigin(origin)
+	if normalized == "" {
+		return false
+	}
+	for _, candidate := range policy.EquivalentOrigins(normalized) {
+		for _, allowed := range allowedOrigins {
+			if candidate == allowed {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	cfg := s.configMgr.Get()
+
+	if origin != "" && isOriginAllowed(origin, cfg.AllowedOrigins) {
+		w.Header().Set("Access-Control-Allow-Origin", policy.NormalizeOrigin(origin))
+		w.Header().Set("Vary", "Origin")
+	}
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -118,9 +174,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
+	normalizedOrigin := policy.NormalizeOrigin(origin)
 
 	if r.Method == http.MethodOptions {
-		s.handleCORSPreflight(w, r, origin)
+		s.handleCORSPreflight(w, r, normalizedOrigin)
 		return
 	}
 
@@ -131,36 +188,34 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 
 	cfg := s.configMgr.Get()
 
-	// Check origin against allowlist for CORS
-	normalizedOrigin := policy.NormalizeOrigin(origin)
-	originAllowed := false
-	if normalizedOrigin != "" {
-		for _, candidate := range policy.EquivalentOrigins(normalizedOrigin) {
-			for _, allowed := range cfg.AllowedOrigins {
-				if candidate == allowed {
-					originAllowed = true
-					break
-				}
-			}
-			if originAllowed {
-				break
-			}
-		}
-	}
-
-	if !originAllowed {
+	if !isOriginAllowed(origin, cfg.AllowedOrigins) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
-			"error": fmt.Sprintf("Origin not allowed: %s", origin),
+			"error": "Origin not allowed",
 		})
 		return
 	}
 
-	// Set CORS headers for allowed origin
-	w.Header().Set("Access-Control-Allow-Origin", origin)
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
+	// Set CORS headers using normalized origin
+	w.Header().Set("Access-Control-Allow-Origin", normalizedOrigin)
+	w.Header().Set("Vary", "Origin")
+
+	// Validate Content-Type
+	mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if mediaType != "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnsupportedMediaType)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "Content-Type must be application/json",
+		})
+		return
+	}
+
+	// Limit request body size
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 
 	var req SignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -185,119 +240,114 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if !policyResult.OK {
+		log.Printf("policy denied sign request: %s", policyResult.Error)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
-			"error": policyResult.Error,
+			"error": "Request denied by policy",
 		})
 		return
 	}
 
-	// Request user consent if callback is configured
-	if s.consentCallback != nil {
-		consentID := s.newConsentID()
-		ch := make(chan bool, 1)
-		s.mu.Lock()
-		s.pendingConsent[consentID] = ch
-		s.mu.Unlock()
-
-		s.consentCallback(ConsentRequest{
-			ID:        consentID,
-			Origin:    origin,
-			Namespace: req.Namespace,
-			Company:   req.Company,
-			Challenge: req.Challenge,
-		})
-
-		select {
-		case allowed := <-ch:
-			if !allowed {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				json.NewEncoder(w).Encode(map[string]interface{}{
-					"ok":    false,
-					"error": "User denied consent",
-				})
-				return
-			}
-		case <-time.After(ConsentTimeout):
-			s.mu.Lock()
-			delete(s.pendingConsent, consentID)
-			s.mu.Unlock()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusGatewayTimeout)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"ok":    false,
-				"error": "Consent timeout",
-			})
-			return
-		}
-	}
-
-	// Validate key
-	if err := keyutil.ValidateKeyFile(cfg.KeyPath); err != nil {
+	// Require user consent
+	if s.consentCallback == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
-			"error": fmt.Sprintf("Key validation failed: %s", err),
+			"error": "Consent handler not configured",
 		})
 		return
 	}
 
-	// Sign
+	consentID := s.newConsentID()
+	ch := make(chan bool, 1)
+	s.mu.Lock()
+	if len(s.pendingConsent) > 0 {
+		s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "Another sign request is pending",
+		})
+		return
+	}
+	s.pendingConsent[consentID] = ch
+	s.mu.Unlock()
+
+	s.consentCallback(ConsentRequest{
+		ID:        consentID,
+		Origin:    origin,
+		Namespace: req.Namespace,
+		Company:   req.Company,
+		Challenge: req.Challenge,
+	})
+
+	select {
+	case allowed := <-ch:
+		if !allowed {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"ok":    false,
+				"error": "User denied consent",
+			})
+			return
+		}
+	case <-time.After(ConsentTimeout):
+		s.mu.Lock()
+		delete(s.pendingConsent, consentID)
+		s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusGatewayTimeout)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":    false,
+			"error": "Consent timeout",
+		})
+		return
+	}
+
+	// Sign (signer.Sign validates the key internally)
 	signature, err := signer.Sign(
 		policyResult.Challenge,
 		policyResult.ExpectedNamespace,
+		policyResult.Origin,
 		cfg.KeyPath,
 		signer.DefaultTimeout,
 	)
 	if err != nil {
+		log.Printf("signing error: %s", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"ok":    false,
-			"error": fmt.Sprintf("Signing failed: %s", err),
+			"error": "Signing failed",
 		})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"ok":        true,
 		"signature": signature,
 	})
 }
 
-func (s *Server) handleCORSPreflight(w http.ResponseWriter, r *http.Request, origin string) {
+func (s *Server) handleCORSPreflight(w http.ResponseWriter, r *http.Request, normalizedOrigin string) {
 	cfg := s.configMgr.Get()
-	normalizedOrigin := policy.NormalizeOrigin(origin)
 
-	allowed := false
-	if normalizedOrigin != "" {
-		for _, candidate := range policy.EquivalentOrigins(normalizedOrigin) {
-			for _, ao := range cfg.AllowedOrigins {
-				if candidate == ao {
-					allowed = true
-					break
-				}
-			}
-			if allowed {
-				break
-			}
-		}
-	}
-
-	if !allowed {
+	if normalizedOrigin == "" || !isOriginAllowed(normalizedOrigin, cfg.AllowedOrigins) {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Access-Control-Allow-Origin", normalizedOrigin)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Access-Control-Allow-Credentials", "true")
 	w.Header().Set("Access-Control-Max-Age", "3600")
+	w.Header().Set("Vary", "Origin")
 	w.WriteHeader(http.StatusNoContent)
 }

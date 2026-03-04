@@ -101,12 +101,13 @@ function initOnboarding(cfg) {
       var statusEl = document.getElementById('onboarding-status');
 
       try {
+        var currentCfg = await window.go.main.App.GetConfig();
         await window.go.main.App.SetConfig({
           enabled: true,
           keyPath: kp,
           allowedOrigins: allowedOrigins,
           originScopes: parsed.values,
-          serverPort: 7890
+          serverPort: currentCfg.serverPort || 7890
         });
 
         if (statusEl) {

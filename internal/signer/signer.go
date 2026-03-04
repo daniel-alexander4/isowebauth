@@ -6,21 +6,30 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"isowebauth/internal/keyutil"
+	"isowebauth/internal/policy"
 )
 
 const DefaultTimeout = 10 * time.Second
 
-var (
-	challengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
-	namespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
-)
+// sshKeygenPath is the path to the ssh-keygen binary. Tests can override this.
+var sshKeygenPath string
 
-func Sign(challenge, namespace, keyPath string, timeout time.Duration) (string, error) {
+// validateKeyPathFunc validates the key path. Tests can override this.
+var validateKeyPathFunc = keyutil.ValidateKeyPath
+
+func init() {
+	if p, err := exec.LookPath("ssh-keygen"); err == nil {
+		sshKeygenPath = p
+	} else {
+		sshKeygenPath = "ssh-keygen"
+	}
+}
+
+func Sign(challenge, namespace, origin, keyPath string, timeout time.Duration) (string, error) {
 	challenge = strings.TrimSpace(challenge)
 	namespace = strings.TrimSpace(namespace)
 
@@ -30,14 +39,23 @@ func Sign(challenge, namespace, keyPath string, timeout time.Duration) (string, 
 	if namespace == "" {
 		return "", fmt.Errorf("namespace is empty")
 	}
-	if !challengeRegex.MatchString(challenge) {
+	if !policy.ChallengeRegex.MatchString(challenge) {
 		return "", fmt.Errorf("invalid challenge format")
 	}
-	if !namespaceRegex.MatchString(namespace) {
+	if !policy.NamespaceRegex.MatchString(namespace) {
 		return "", fmt.Errorf("invalid namespace format")
 	}
+	if origin == "" {
+		return "", fmt.Errorf("origin is empty")
+	}
 
-	resolvedKey := keyutil.ResolveKeyPath(keyPath)
+	if err := validateKeyPathFunc(keyPath); err != nil {
+		return "", err
+	}
+	resolvedKey, err := keyutil.ResolveKeyPath(keyPath)
+	if err != nil {
+		return "", err
+	}
 	if err := keyutil.ValidateKeyFile(resolvedKey); err != nil {
 		return "", err
 	}
@@ -46,12 +64,18 @@ func Sign(challenge, namespace, keyPath string, timeout time.Duration) (string, 
 		timeout = DefaultTimeout
 	}
 
-	keygen := os.Getenv("SSH_KEYGEN_PATH")
-	if keygen == "" {
-		keygen = "ssh-keygen"
-	}
+	keygen := sshKeygenPath
 
-	tmpDir, err := os.MkdirTemp("", "pubkey-auth-")
+	// Use a private base dir under user's home to avoid world-readable /tmp
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	privateTmpBase := filepath.Join(homeDir, ".cache", "isowebauth", "tmp")
+	if err := os.MkdirAll(privateTmpBase, 0700); err != nil {
+		return "", fmt.Errorf("failed to create private temp base: %w", err)
+	}
+	tmpDir, err := os.MkdirTemp(privateTmpBase, "sign-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
 	}
@@ -60,7 +84,9 @@ func Sign(challenge, namespace, keyPath string, timeout time.Duration) (string, 
 	challengeFile := filepath.Join(tmpDir, "challenge")
 	sigFile := filepath.Join(tmpDir, "challenge.sig")
 
-	if err := os.WriteFile(challengeFile, []byte(challenge), 0600); err != nil {
+	// Bind origin into signed payload to prevent cross-origin signature replay
+	signedPayload := challenge + "|" + origin
+	if err := os.WriteFile(challengeFile, []byte(signedPayload), 0600); err != nil {
 		return "", fmt.Errorf("failed to write challenge file: %w", err)
 	}
 

@@ -43,7 +43,7 @@ function splitOriginParts(origin) {
   try {
     var url = new URL(origin);
     var port = url.port || '';
-    var host = port ? origin.replace(':' + port, '') : origin;
+    var host = url.protocol + '//' + url.hostname;
     return { host: host, port: port };
   } catch (e) {
     return { host: origin, port: '' };
@@ -304,8 +304,13 @@ async function saveSettingsConfig() {
   }
 }
 
+var settingsListenersBound = false;
+
 function initSettings(cfg) {
   renderSettingsConfig(cfg);
+
+  if (settingsListenersBound) return;
+  settingsListenersBound = true;
 
   // Toggle
   var toggleBtn = document.getElementById('toggle-enabled');

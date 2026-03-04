@@ -7,23 +7,60 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"isowebauth/internal/config"
 )
 
-func ResolveKeyPath(override string) string {
+func ResolveKeyPath(override string) (string, error) {
 	p := strings.TrimSpace(override)
 	if p == "" {
-		p = "~/.ssh/id_ed25519"
+		p = config.DefaultKeyPath
 	}
 	if strings.HasPrefix(p, "~/") {
-		if u, err := user.Current(); err == nil {
-			p = filepath.Join(u.HomeDir, p[2:])
+		u, err := user.Current()
+		if err != nil {
+			return "", fmt.Errorf("cannot determine home directory: %w", err)
 		}
+		p = filepath.Join(u.HomeDir, p[2:])
 	}
-	return p
+	return p, nil
+}
+
+// ValidateKeyPath checks that the resolved key path is within ~/.ssh/.
+func ValidateKeyPath(path string) error {
+	resolved, err := ResolveKeyPath(path)
+	if err != nil {
+		return err
+	}
+	u, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory for path validation: %w", err)
+	}
+	sshDir := filepath.Join(u.HomeDir, ".ssh")
+	absResolved, err := filepath.Abs(resolved)
+	if err != nil {
+		return fmt.Errorf("cannot resolve absolute path: %w", err)
+	}
+	// Resolve symlinks to get canonical path
+	absResolved, err = filepath.EvalSymlinks(absResolved)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot resolve symlinks: %w", err)
+	}
+	absSshDir, err := filepath.Abs(sshDir)
+	if err != nil {
+		return fmt.Errorf("cannot resolve absolute path: %w", err)
+	}
+	if !strings.HasPrefix(absResolved, absSshDir+string(filepath.Separator)) {
+		return fmt.Errorf("key path must be within ~/.ssh/: %s", resolved)
+	}
+	return nil
 }
 
 func ValidateKeyFile(path string) error {
-	resolved := ResolveKeyPath(path)
+	resolved, err := ResolveKeyPath(path)
+	if err != nil {
+		return err
+	}
 
 	info, err := os.Lstat(resolved)
 	if err != nil {
@@ -35,11 +72,6 @@ func ValidateKeyFile(path string) error {
 
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("key path is not a regular file: %s", resolved)
-	}
-
-	// Check symlink
-	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("key path must not be a symlink: %s", resolved)
 	}
 
 	if runtime.GOOS != "windows" {

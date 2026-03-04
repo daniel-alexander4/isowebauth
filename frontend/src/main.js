@@ -26,10 +26,6 @@ async function initApp() {
 
 // Listen for Wails events
 if (window.runtime) {
-  window.runtime.EventsOn('show-onboarding', function() {
-    showView('view-onboarding');
-  });
-
   window.runtime.EventsOn('sign-request', function(data) {
     showConsentDialog(data);
   });

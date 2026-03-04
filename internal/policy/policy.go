@@ -10,9 +10,8 @@ import (
 )
 
 var (
-	challengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
-	namespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
-	companyRegex   = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
+	ChallengeRegex = regexp.MustCompile(`^[A-Za-z0-9_-]{16,256}$`)
+	NamespaceRegex = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,64}$`)
 )
 
 type SignPolicyInput struct {
@@ -36,7 +35,10 @@ type SignPolicyResult struct {
 
 func NormalizeOrigin(value string) string {
 	u, err := url.Parse(value)
-	if err != nil || u.Scheme == "" || u.Host == "" {
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
 		return ""
 	}
 	// Reconstruct origin as scheme://host (includes port if present)
@@ -45,15 +47,7 @@ func NormalizeOrigin(value string) string {
 
 func NormalizeNamespace(value string) string {
 	v := strings.TrimSpace(value)
-	if namespaceRegex.MatchString(v) {
-		return v
-	}
-	return ""
-}
-
-func NormalizeCompany(value string) string {
-	v := strings.TrimSpace(value)
-	if companyRegex.MatchString(v) {
+	if NamespaceRegex.MatchString(v) {
 		return v
 	}
 	return ""
@@ -67,14 +61,19 @@ func EquivalentOrigins(origin string) []string {
 	}
 	hostname := u.Hostname()
 	port := u.Port()
-	if hostname == "localhost" {
-		alt := u.Scheme + "://127.0.0.1"
-		if port != "" {
-			alt += ":" + port
-		}
-		origins = append(origins, alt)
-	} else if hostname == "127.0.0.1" {
-		alt := u.Scheme + "://localhost"
+
+	// Build alternate origins for all localhost variants
+	var alts []string
+	switch hostname {
+	case "localhost":
+		alts = []string{"127.0.0.1", "[::1]"}
+	case "127.0.0.1":
+		alts = []string{"localhost", "[::1]"}
+	case "::1":
+		alts = []string{"localhost", "127.0.0.1"}
+	}
+	for _, h := range alts {
+		alt := u.Scheme + "://" + h
 		if port != "" {
 			alt += ":" + port
 		}
@@ -97,14 +96,14 @@ func EvaluateSignPolicy(input SignPolicyInput) SignPolicyResult {
 		return SignPolicyResult{OK: false, Error: "Missing challenge, namespace, or origin"}
 	}
 
-	if !challengeRegex.MatchString(challenge) {
+	if !ChallengeRegex.MatchString(challenge) {
 		return SignPolicyResult{OK: false, Error: "Invalid challenge format"}
 	}
 
 	if NormalizeNamespace(namespace) == "" {
 		return SignPolicyResult{OK: false, Error: "Invalid namespace format"}
 	}
-	if company != "" && NormalizeCompany(company) == "" {
+	if company != "" && NormalizeNamespace(company) == "" {
 		return SignPolicyResult{OK: false, Error: "Invalid company format"}
 	}
 

@@ -9,14 +9,20 @@ import (
 )
 
 func TestResolveKeyPathDefault(t *testing.T) {
-	p := ResolveKeyPath("")
+	p, err := ResolveKeyPath("")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 	if !strings.HasSuffix(p, ".ssh/id_ed25519") {
 		t.Errorf("expected default key path ending in .ssh/id_ed25519, got %q", p)
 	}
 }
 
 func TestResolveKeyPathTilde(t *testing.T) {
-	p := ResolveKeyPath("~/.ssh/id_rsa")
+	p, err := ResolveKeyPath("~/.ssh/id_rsa")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 	if strings.HasPrefix(p, "~") {
 		t.Errorf("tilde should be expanded, got %q", p)
 	}
