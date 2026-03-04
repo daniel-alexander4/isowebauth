@@ -50,7 +50,11 @@ jobs:
         run: go test ./internal/... -count=1
 
       # Build
-      - name: Build
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: wails build -platform ${{ matrix.platform }} -tags webkit2gtk_41
+      - name: Build (non-Linux)
+        if: runner.os != 'Linux'
         run: wails build -platform ${{ matrix.platform }}
 
       # Package Linux
