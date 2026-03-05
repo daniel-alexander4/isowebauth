@@ -19,14 +19,14 @@ jobs:
             artifact: isowebauth-linux-amd64.tar.gz
             webkit_dev: libwebkit2gtk-4.0-dev
             webkit_dep: libwebkit2gtk-4.0-0
-            goflags: ""
+            wails_tags: ""
             deb_suffix: "22.04"
           - os: ubuntu-24.04
             platform: linux/amd64
             artifact: isowebauth-linux-amd64-24.04.tar.gz
             webkit_dev: libwebkit2gtk-4.1-dev
             webkit_dep: libwebkit2gtk-4.1-0
-            goflags: "-tags=webkit2_41"
+            wails_tags: "webkit2_41"
             deb_suffix: "24.04"
           - os: macos-latest
             platform: darwin/universal
@@ -63,9 +63,7 @@ jobs:
       # Build (Linux & macOS)
       - name: Build
         if: runner.os != 'Windows'
-        env:
-          GOFLAGS: ${{ matrix.goflags }}
-        run: wails build -platform ${{ matrix.platform }}
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.wails_tags && format('-tags {0}', matrix.wails_tags) || '' }}
 
       # Build (Windows with NSIS installer)
       - name: Build (Windows)
