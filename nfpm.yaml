@@ -1,0 +1,14 @@
+name: sshkey-web-auth
+arch: amd64
+platform: linux
+version: ${VERSION}
+maintainer: daniel-alexander4
+description: Desktop app that signs web authentication challenges using local SSH keys
+homepage: https://github.com/daniel-alexander4/isowebauth
+license: MIT
+contents:
+  - src: build/bin/sshkey-web-auth
+    dst: /usr/bin/sshkey-web-auth
+depends:
+  - libgtk-3-0
+  - libwebkit2gtk-4.0-0
