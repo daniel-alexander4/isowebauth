@@ -11,4 +11,4 @@ contents:
     dst: /usr/bin/sshkey-web-auth
 depends:
   - libgtk-3-0
-  - libwebkit2gtk-4.0-0
+  - ${WEBKIT_DEP}

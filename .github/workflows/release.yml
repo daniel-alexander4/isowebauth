@@ -17,6 +17,17 @@ jobs:
           - os: ubuntu-22.04
             platform: linux/amd64
             artifact: sshkey-web-auth-linux-amd64.tar.gz
+            webkit_dev: libwebkit2gtk-4.0-dev
+            webkit_dep: libwebkit2gtk-4.0-0
+            wails_flags: ""
+            deb_suffix: "22.04"
+          - os: ubuntu-24.04
+            platform: linux/amd64
+            artifact: sshkey-web-auth-linux-amd64-24.04.tar.gz
+            webkit_dev: libwebkit2gtk-4.1-dev
+            webkit_dep: libwebkit2gtk-4.1-0
+            wails_flags: "-tags webkit2gtk_41"
+            deb_suffix: "24.04"
           - os: macos-latest
             platform: darwin/universal
             artifact: sshkey-web-auth-macos-universal.zip
@@ -38,21 +49,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev ${{ matrix.webkit_dev }}
 
       # Install Wails CLI
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.11.0
 
-      # Run tests (Linux only)
+      # Run tests (Linux only, on 22.04)
       - name: Run tests
-        if: runner.os == 'Linux'
+        if: matrix.os == 'ubuntu-22.04'
         run: go test ./internal/... -count=1
 
       # Build (Linux & macOS)
       - name: Build
         if: runner.os != 'Windows'
-        run: wails build -platform ${{ matrix.platform }}
+        run: wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }}
 
       # Build (Windows with NSIS installer)
       - name: Build (Windows)
@@ -69,9 +80,11 @@ jobs:
         if: runner.os == 'Linux'
         env:
           VERSION: ${{ github.ref_name }}
+          WEBKIT_DEP: ${{ matrix.webkit_dep }}
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-          VERSION=${VERSION#v} nfpm pkg --packager deb --target .
+          DEB_NAME="sshkey-web-auth_${VERSION#v}_amd64_${{ matrix.deb_suffix }}.deb"
+          VERSION=${VERSION#v} nfpm pkg --packager deb --target "$DEB_NAME"
 
       # Package macOS
       - name: Package (macOS)
@@ -95,7 +108,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: sshkey-web-auth_amd64.deb
+          name: sshkey-web-auth_amd64_${{ matrix.deb_suffix }}.deb
           path: "*.deb"
 
       # Upload Windows installer
