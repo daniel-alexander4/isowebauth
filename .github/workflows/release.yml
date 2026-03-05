@@ -116,8 +116,9 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: isowebauth-amd64-installer.exe
-          path: build/bin/isowebauth-amd64-installer.exe
+          name: isowebauth-installer.exe
+          path: build/bin/*-installer.exe
+          if-no-files-found: warn
 
   release:
     needs: build
