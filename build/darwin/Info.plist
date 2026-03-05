@@ -9,7 +9,7 @@
     <key>CFBundleDisplayName</key>
     <string>SSHKey Web Auth</string>
     <key>CFBundleExecutable</key>
-    <string>sshkey-web-auth</string>
+    <string>isowebauth</string>
     <key>CFBundleIconFile</key>
     <string>iconfile</string>
     <key>CFBundlePackageType</key>

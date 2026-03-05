@@ -12,7 +12,7 @@ import (
 const (
 	DefaultKeyPath    = "~/.ssh/id_ed25519"
 	DefaultServerPort = 7890
-	configDirName     = "sshkey-web-auth"
+	configDirName     = "isowebauth"
 	configFileName    = "config.json"
 )
 

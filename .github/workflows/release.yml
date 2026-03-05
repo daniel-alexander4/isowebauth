@@ -16,24 +16,24 @@ jobs:
         include:
           - os: ubuntu-22.04
             platform: linux/amd64
-            artifact: sshkey-web-auth-linux-amd64.tar.gz
+            artifact: isowebauth-linux-amd64.tar.gz
             webkit_dev: libwebkit2gtk-4.0-dev
             webkit_dep: libwebkit2gtk-4.0-0
-            wails_flags: ""
+            goflags: ""
             deb_suffix: "22.04"
           - os: ubuntu-24.04
             platform: linux/amd64
-            artifact: sshkey-web-auth-linux-amd64-24.04.tar.gz
+            artifact: isowebauth-linux-amd64-24.04.tar.gz
             webkit_dev: libwebkit2gtk-4.1-dev
             webkit_dep: libwebkit2gtk-4.1-0
-            wails_flags: "-tags webkit2gtk_41"
+            goflags: "-tags=webkit2_41"
             deb_suffix: "24.04"
           - os: macos-latest
             platform: darwin/universal
-            artifact: sshkey-web-auth-macos-universal.zip
+            artifact: isowebauth-macos-universal.zip
           - os: windows-latest
             platform: windows/amd64
-            artifact: sshkey-web-auth-windows-amd64.zip
+            artifact: isowebauth-windows-amd64.zip
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -63,7 +63,9 @@ jobs:
       # Build (Linux & macOS)
       - name: Build
         if: runner.os != 'Windows'
-        run: wails build -platform ${{ matrix.platform }} ${{ matrix.wails_flags }}
+        env:
+          GOFLAGS: ${{ matrix.goflags }}
+        run: wails build -platform ${{ matrix.platform }}
 
       # Build (Windows with NSIS installer)
       - name: Build (Windows)
@@ -73,7 +75,7 @@ jobs:
       # Package Linux
       - name: Package (Linux)
         if: runner.os == 'Linux'
-        run: tar -czf ${{ matrix.artifact }} -C build/bin sshkey-web-auth
+        run: tar -czf ${{ matrix.artifact }} -C build/bin isowebauth
 
       # Build .deb package (Linux)
       - name: Build .deb package
@@ -83,19 +85,19 @@ jobs:
           WEBKIT_DEP: ${{ matrix.webkit_dep }}
         run: |
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
-          DEB_NAME="sshkey-web-auth_${VERSION#v}_amd64_${{ matrix.deb_suffix }}.deb"
+          DEB_NAME="isowebauth_${VERSION#v}_amd64_${{ matrix.deb_suffix }}.deb"
           VERSION=${VERSION#v} nfpm pkg --packager deb --target "$DEB_NAME"
 
       # Package macOS
       - name: Package (macOS)
         if: runner.os == 'macOS'
-        run: cd build/bin && zip -r ../../${{ matrix.artifact }} sshkey-web-auth.app
+        run: cd build/bin && zip -r ../../${{ matrix.artifact }} isowebauth.app
 
       # Package Windows
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path build/bin/sshkey-web-auth.exe -DestinationPath ${{ matrix.artifact }}
+        run: Compress-Archive -Path build/bin/isowebauth.exe -DestinationPath ${{ matrix.artifact }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -108,7 +110,7 @@ jobs:
         if: runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
-          name: sshkey-web-auth_amd64_${{ matrix.deb_suffix }}.deb
+          name: isowebauth_amd64_${{ matrix.deb_suffix }}.deb
           path: "*.deb"
 
       # Upload Windows installer
@@ -116,8 +118,8 @@ jobs:
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: sshkey-web-auth-amd64-installer.exe
-          path: build/bin/sshkey-web-auth-amd64-installer.exe
+          name: isowebauth-amd64-installer.exe
+          path: build/bin/isowebauth-amd64-installer.exe
 
   release:
     needs: build

@@ -1,13 +1,13 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
-  "name": "sshkey-web-auth",
-  "outputfilename": "sshkey-web-auth",
+  "name": "isowebauth",
+  "outputfilename": "isowebauth",
   "frontend:install": "",
   "frontend:build": "",
   "frontend:dev:watcher": "",
   "frontend:dev:serverUrl": "",
   "author": {
-    "name": "sshkey-web-auth",
+    "name": "isowebauth",
     "email": ""
   }
 }

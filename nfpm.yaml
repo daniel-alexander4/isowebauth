@@ -1,4 +1,4 @@
-name: sshkey-web-auth
+name: isowebauth
 arch: amd64
 platform: linux
 version: ${VERSION}
@@ -7,8 +7,8 @@ description: Desktop app that signs web authentication challenges using local SS
 homepage: https://github.com/daniel-alexander4/isowebauth
 license: MIT
 contents:
-  - src: build/bin/sshkey-web-auth
-    dst: /usr/bin/sshkey-web-auth
+  - src: build/bin/isowebauth
+    dst: /usr/bin/isowebauth
 depends:
   - libgtk-3-0
   - ${WEBKIT_DEP}

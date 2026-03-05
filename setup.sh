@@ -19,7 +19,7 @@ go version
 if [[ ":$PATH:" != *":$GOPATH_BIN:"* ]]; then
   echo "==> Adding $GOPATH_BIN to PATH in $SHELL_RC"
   echo "" >> "$SHELL_RC"
-  echo "# Go bin path (added by sshkey-web-auth desktop setup)" >> "$SHELL_RC"
+  echo "# Go bin path (added by isowebauth desktop setup)" >> "$SHELL_RC"
   echo "export PATH=\"\$PATH:$(go env GOPATH)/bin\"" >> "$SHELL_RC"
   export PATH="$PATH:$GOPATH_BIN"
   echo "    Added. Will persist for new shells."
@@ -72,5 +72,5 @@ wails build
 
 echo ""
 echo "==> Build complete!"
-echo "    Binary: $SCRIPT_DIR/build/bin/sshkey-web-auth"
-echo "    Run it:  ./build/bin/sshkey-web-auth"
+echo "    Binary: $SCRIPT_DIR/build/bin/isowebauth"
+echo "    Run it:  ./build/bin/isowebauth"
